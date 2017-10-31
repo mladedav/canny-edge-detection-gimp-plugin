@@ -7,9 +7,6 @@ test:
 	make run
 
 run:
-	G_MESSAGES_DEBUG=$(G_MESSAGES_DEBUG) gimp -a markII.jpg
-
-engine:
 	G_MESSAGES_DEBUG=$(G_MESSAGES_DEBUG) gimp -a engine.png
 
 install: canny.c
