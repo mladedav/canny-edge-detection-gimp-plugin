@@ -3,6 +3,11 @@
 #include <math.h>
 #include <string.h>
 
+//================================================================================ COUNTERS FOR MEMORY DEBUGING
+gint set_allocations = 0;
+gint set_frees = 0;
+gint grid_allocations = 0;
+gint grid_frees = 0;
 //================================================================================ FUNCTION DECLARATIONS
 static void query       (void);
 static void run         (const gchar      *name,
@@ -80,29 +85,23 @@ static void
            gint             *nreturn_vals,
            GimpParam       **return_vals)
 {
-    static GimpParam  values[1];
-    GimpPDBStatusType status = GIMP_PDB_SUCCESS;
+    static GimpParam  values;
     GimpRunMode       run_mode;
     GimpDrawable     *drawable;
 
     /* Setting mandatory output values */
     *nreturn_vals = 1;
-    *return_vals  = values;
+    *return_vals  = &values;
 
-    values[0].type = GIMP_PDB_STATUS;
-    values[0].data.d_status = status;
+    values.type = GIMP_PDB_STATUS;
 
-    //ziskani modu 
     run_mode = param[0].data.d_int32;
 
-    //ziskani obrazu 
     drawable = gimp_drawable_get (param[2].data.d_drawable);
-
-    //ziskani poctu kanalu
-    //channels = gimp_drawable_bpp (drawable->drawable_id);
 
     if ( !gimp_drawable_is_gray ( drawable -> drawable_id ) )
     {
+        // TODO add undo set so this is undoable in one go
         gimp_image_convert_grayscale ( param[1].data.d_int32 );
         drawable -> bpp = 1; // I am scared of this but I had to do this so that it works even with RGB
     }
@@ -114,14 +113,17 @@ static void
         case GIMP_RUN_NONINTERACTIVE:
         if (nparams != 5)
         {
-            status = GIMP_PDB_CALLING_ERROR;
+            values . data . d_status = GIMP_PDB_CALLING_ERROR;
             return;
         }
         thresholds . low_threshold = param [ 3 ] . data . d_int32;
         thresholds . high_threshold = param [ 4 ] . data . d_int32;
         case GIMP_RUN_INTERACTIVE:
-        if ( !canny_dialog (drawable) );
-        //case GIMP_RUN_WITH_LAST_VALS: // I don't think this is viable option
+        if ( !canny_dialog (drawable) )
+            g_error ( "Unexpected problem with dialog window." );
+        break;
+        case GIMP_RUN_WITH_LAST_VALS: // I don't think this is viable option
+        break;
         default:
         break;
     }
@@ -132,7 +134,8 @@ static void
     canny_detection ( drawable, NULL );
     g_debug ( "Finished canny_detection()" );
 
-    // uvolneni obrazu
+    values . data . d_status = GIMP_PDB_SUCCESS;
+
     gimp_displays_flush ();
     gimp_drawable_detach (drawable);
 }
@@ -145,8 +148,9 @@ typedef struct grid
     guchar * data;
 } GRID;
 
-static GRID * makeGrid ( gint width, gint height, gint channels )
+static GRID * grid_init ( gint width, gint height, gint channels )
 {
+    grid_allocations ++;
     GRID * ret = g_new ( GRID, 1 );
     ret -> width = width;
     ret -> height = height;
@@ -155,8 +159,9 @@ static GRID * makeGrid ( gint width, gint height, gint channels )
     return ret;
 }
 
-static void freeGrid ( GRID * grid )
+static void grid_free ( GRID * grid )
 {
+    grid_frees ++;
     g_free ( grid -> data );
     g_free ( grid );
 }
@@ -294,9 +299,6 @@ static void double_threshold ( GRID * in, GRID * out )
             else
                 getByte ( out, i, j, 0 ) = 255;
 }
-//================================================================================ COUNTERS FOR MEMORY DEBUGING
-int set_allocations = 0;
-int set_frees = 0;
 //================================================================================ HELPING STRUCTURES AND FUNCTIONS
 gint lower_bound ( gint * arr, gint size, gint val )
 {
@@ -543,6 +545,8 @@ static void canny_detection ( GimpDrawable * drawable, GimpPreview * preview )
 
     set_allocations = 0;
     set_frees = 0;
+    grid_allocations = 0;
+    grid_frees = 0;
 
     // This has no effect but provides clarification as to how the double_threshold acts
     if ( thresholds . low_threshold > thresholds . high_threshold )
@@ -568,8 +572,8 @@ static void canny_detection ( GimpDrawable * drawable, GimpPreview * preview )
     gimp_pixel_rgn_init (&rgn_out, drawable, x1, y1, width, height, TRUE, TRUE );
 
     g_debug ( "Allocating grids" );
-    in = makeGrid ( width, height, 1 );
-    blurred = makeGrid ( width, height, 1 );
+    in = grid_init ( width, height, 1 );
+    blurred = grid_init ( width, height, 1 );
     g_debug ( "Reading data" );
     gimp_pixel_rgn_get_rect ( &rgn_in, in -> data, x1, y1, width, height );
 
@@ -577,39 +581,39 @@ static void canny_detection ( GimpDrawable * drawable, GimpPreview * preview )
     gimp_progress_set_text ( "Gauss smooth..." );
     gauss_smooth ( in, blurred );
     g_debug ( "Finished gaussian blur" );
-    freeGrid ( in );
+    grid_free ( in );
 
-    intensity = makeGrid ( width, height, 2 ); // TODO maybe use parasites instead of second channel
+    intensity = grid_init ( width, height, 2 ); // TODO maybe use parasites instead of second channel
     g_debug ( "Starting sobel gradient" );
     gimp_progress_set_text ( "Sobel intensity gradient..." );
     sobel_intensity_gradient ( blurred, intensity );
     g_debug ( "Finished sobel gradient" );
-    freeGrid ( blurred );
+    grid_free ( blurred );
 
-    thinned = makeGrid ( width, height, 1 );
+    thinned = grid_init ( width, height, 1 );
     g_debug ( "Starting non-maximum suppression" );
     gimp_progress_set_text ( "Non-maximum suppression..." );
     non_maximum_suppression ( intensity, thinned );
     g_debug ( "Finished non-maximum suppression" );
-    freeGrid ( intensity );
+    grid_free ( intensity );
 
-    threshold = makeGrid ( width, height, 1 );
+    threshold = grid_init ( width, height, 1 );
     g_debug ( "Starting double threshold" );
     gimp_progress_set_text ( "Double threshold..." );
     double_threshold ( thinned, threshold );
     g_debug ( "Finished double threshold" );
-    freeGrid ( thinned );
+    grid_free ( thinned );
 
-    out = makeGrid ( width, height, 1 );
+    out = grid_init ( width, height, 1 );
     g_debug ( "Starting edge tracking by hysteresis" );
     gimp_progress_set_text ( "Edge tracking..." );
     hysteresis ( threshold, out );
     g_debug ( "Finished edge tracking by hysteresis" );
-    freeGrid ( threshold );
+    grid_free ( threshold );
 
     g_debug ( "Writing results" );
     gimp_pixel_rgn_set_rect ( &rgn_out, out -> data, x1, y1, width, height );
-    freeGrid ( out );
+    grid_free ( out );
 
     if ( preview )
     {
@@ -624,9 +628,11 @@ static void canny_detection ( GimpDrawable * drawable, GimpPreview * preview )
         gimp_drawable_update (drawable->drawable_id, x1, y1, width, height);
     }
 
-    g_debug ( "Set allocations done: %d", set_allocations );
-    g_debug ( "Set frees done:       %d", set_frees );
-    if ( set_allocations != set_frees )
+    g_debug ( "Set allocations done:  %d", set_allocations );
+    g_debug ( "Set frees done:        %d", set_frees );
+    g_debug ( "Grid allocations done: %d", grid_allocations );
+    g_debug ( "Grid frees done:       %d", grid_frees );
+    if ( set_allocations != set_frees || grid_allocations != grid_frees )
         g_warning ( "High possibility memory leaks occured. Saving all work is recommended." );
 }
 //================================================================================ USER INTERFACE
