@@ -69,7 +69,7 @@ static void query (void)
     "mladedav",
     "2017",
     "C_anny edge detection", //TODO change name to "_Canny..." when changing menu placement
-    "RGB, GRAY, INDEXED", // TODO maybe add handeling of alpha channels later and indexed
+    "RGB, GRAY, INDEXED", // TODO maybe add handleing of alpha channels later and indexed
     GIMP_PLUGIN,
     G_N_ELEMENTS (args), 0,
     args, NULL);
@@ -103,7 +103,7 @@ static void
     {
         // TODO add undo set so this is undoable in one go
         gimp_image_convert_grayscale ( param[1].data.d_int32 );
-        drawable -> bpp = 1; // I am scared of this but I had to do this so that it works even with RGB
+        drawable -> bpp = 1;
     }
     if ( !gimp_drawable_is_gray ( drawable -> drawable_id ) )
         g_error ( "Cannot convert drawable to grayscale" );

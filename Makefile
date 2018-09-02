@@ -12,5 +12,9 @@ run:
 lenna:
 	G_MESSAGES_DEBUG=$(G_MESSAGES_DEBUG) gimp -a Lenna.png
 
+mark:
+	G_MESSAGES_DEBUG=$(G_MESSAGES_DEBUG) gimp -a markII.jpg
+
+
 install: canny.c
 	CFLAGS=$(CFLAGS) LDFLAGS=$(LDFLAGS) gimptool-2.0 --install canny.c
