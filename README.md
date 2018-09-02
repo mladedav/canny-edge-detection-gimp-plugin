@@ -4,6 +4,8 @@ Demonstration - run Makefile and gimp should start with a new button on the righ
 
 Created as a semestral work for subject BI-PGA (Programming of Graphical Application) on Faculty of Information Technology, Czech Technical University in Prague
 
+Documentation in Czech can be found here - https://edux.fit.cvut.cz/archive/B171/BI-PGA/student/mladedav/dokumentace1
+
 # License
 
 The project is licensed under the GPLv3.
