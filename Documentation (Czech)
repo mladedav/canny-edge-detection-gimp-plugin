@@ -1,0 +1,185 @@
+Plugin do gimpu
+Pokročilá detekce hran
+Autor
+David Mládek
+
+Zadání: Vytvořte plug-in do GIMPu realizující Cannyho filtr pro hledání hran.
+
+Obecné informace
+Použitý jazyk: C 
+
+Uživatelská dokumentace
+Instalace
+Plugin využívá funkce ze standardní matematické knihovny math.h (funkce hypot a atan2) a je tedy při kompilaci potřeba přidat parametr -lm, čehož se dá docílit nastavením proměnné LFLAGS. Samotná instalace pluginu tedy mohla vypadat například takto:
+
+LFLAGS=„$LFLAGS -lm“ gimptool-2.0 –install canny.c
+
+Spuštění
+Po instalaci se plugin zatím pro další vývoj nechází v hlavním menu pod jménem „Canny edge detection“ a je spustitelný klávesovou zkratkou alt-a (z důvodů snadného a rychlého spuštění). Ostrá verze by se pravděpodobně nacházela v menu “<Image>/Filters/Edge-Detect/Canny…“
+
+Plugin pracuje nad obrazy v odstínech šedé, ale sám dokáže převést jak obrazy z RGB tak z INDEXED formátu do GRAY a poté provede svou funkci. Plugin zatím neumí pracovat s obrazy, které mají kanál alfa.
+
+Plugin umí pracovat interaktivně, kde se vyplňují hodnoty „High threshold“ a „Low threshold“, které určují, jak silné hrany v obraze nakonec zůstanou (vyšší hodnoty znamenají menší toleranci). Hodnoty mohou být libovolná čísla od 1 do 255, pokud je Low threshold vyšší než High threshold, tak se High treshold nastaví na stejnou hodnotu jako Low threshold. Žádné zadané hodnoty by neměly způsobit neočekávané chování nebo pád. Při interaktivním módu je i náhled.
+
+Také může pracovat neinteraktivně, kde se předává pět parametrů, kde poslední dva jsou stejné jako v interaktivním režimu. Opět jsou očekávány stejné hodnoty, ale neprobíhají žádné kontroly a očekává se, že kdokoliv vytvářející skripty s neinteraktivním voláním si předem zjistí volací konvenci a omezení.
+
+Plugin obsahuje možnost spuštění se stejnými parametry, ale není podporována, jelikož taková operace podle mne nemá význam, ač z ní vychází zajímavá sekvence obrázků. Opětovné volání se však nesmí volat dříve, než se dokončí poslední oprace, jinak může dojít k poškození obrazu.
+
+Při testování můžete plugin spouštět přes Makefile, případně přes terminál s nastavenou proměnnou G_DEBUG_MESSAGES=all, což bude vypisovat debugovací hlášky, které gimp jinak ignoruje. Mimojiné jsou na konci počty alokací a uvolnění netriviálních struktur, které nejsou použity jen jednou.
+
+
+
+Programátorská dokumentace
+Globální proměnné
+gint set_allocations
+Proměnná pro paměťový debugging.
+
+gint set_frees
+Proměnná pro paměťový debugging.
+
+gint grid_allocations
+Proměnná pro paměťový debugging.
+
+gint grid_frees
+Proměnná pro paměťový debugging.
+
+struct params thresholds
+Struktura uchovávající poslední volané parametry, výchozí parametry a parametry zadané uživatelem. Vizte strukturu struct params.
+
+GimpPlugInInfo PLUG_IN_INFO
+Vizte dokumentaci gimpu.
+
+Struktury a pomocné funkce
+struct params
+Uchovává parametry pro vlastní volání Cannyho detektoru. Měla by existovat jen jedna globální instance jménem thresholds.
+
+gint preview
+Gimp preview.
+
+gint high_threshold
+Horní hranice pro funkci double_threshold, jeden z uživatelských parametrů.
+
+gint low_threshold
+Dolní hranice pro funkci double_threshold, jeden z uživatelských parametrů.
+
+GRID (a.k.a. struct grid)
+Reprezentuje určitou část obrazu, je vytovřena pro jednodušší manipulaci s jednorozměrným bufferem, který naplní gimp_drawable_get_rect.
+
+gint width
+Šířka reprezentovaného obrazu.
+
+gint height
+Výška reprezentovaného obrazu.
+
+gint channels
+Počet kanálů v reprezentovaném obrazu.
+
+guchar * data
+Vlastní hodnoty reprezentující sílu kanálu v daném pixelu.
+
+GRID * grid_init ( gint width, gint height, gint channels )
+Funkce pro alokaci struktury GRID s požadovanými parametry.
+
+void grid_free ( GRID * grid )
+Funkce uvolňující strukturu GRID a její buffer.
+
+gint lower_bound ( gint * arr, gint size, gint val )
+Nachází v setříděném poli arr velikosti size pozici pro hodnotu val.
+
+SET (a.k.a. struct set_gint)
+Setříděné pole čísel typu gint, kde se žádné neopakuje.
+
+gint size
+Počet členů.
+
+gint max
+Vnitřní proměnná určující, kdy se bude muset realokovat buffer.
+
+gint * data
+Vlastní data.
+
+SET * set_init ( gint max )
+Funkce inicializující SET se zadaným maximálním počtem členů. Předpokládá se mocnina dvou, ale není vyžadována.
+
+void set_free ( SET * set )
+Funkce uvolňující strukturu SET a její vnitřní buffer.
+
+void set_grow ( SET * set )
+Funkce realokující vnitřní buffer struktury na dvojnásobek.
+
+void set_insert ( SET * s, gint val )
+Funkce přidávající hodnotu val do struktury, na kterou ukazuje s. Pokud hodnotu již obsahuje, nedělá nic. Sama kontroluje maximální velikost.
+
+SET * set_merge ( SET * first, SET * second )
+Sloučí dvě disjunktní struktury SET a vrátí ukazatel na novou sloučenou strukturu. Struktury, které funkce dostala v parametrech, nijak nemění.
+
+LABELS (a.k.a. struct valid_labels)
+Struktura uchovává vnitřní informace k hysterezi, které labely jsou silné hrany a které jsou s kterými propojeny.
+
+gint size
+Počet labelů.
+
+gint max
+Maximální počet labelů ==
+
+gint * valid
+Pole velikosti nejméně size, kde se na n-té pozici nachází 1 pro silnou hranu a 0 pro slabou. Hodnoty jsou aktualizovány až při druhém průchodu hystereze při voláni labels_is_valid.
+
+SET ** equivalent
+Pole ukazatelů na strukturu SET, kde jsou uchovávány záznamy, které labely náleží ke stejné hraně. Více různých labelů může odkazovat na stejnou strukturu.
+
+LABELS * labels_init ( void )
+Funkce inicializuje strukturu LABELS.
+
+void labels_free ( LABELS * l )
+Funkce uvolní strukturu pod ukazatelem l a její členy.
+
+void labels_grow ( LABELS * l )
+Zvětší strukturu l, aby mohla pojmout více labelů.
+
+gint labels_add ( LABELS * l )
+Vytvoří nový label a vrátí jeho hodnotu.
+
+void labels_merge ( LABELS * l, gint first, gint second )
+Sloučí labely first a second, tedy sloučí SETy, které udávají jejich ekvivalence a u všech členů nahradí odkaz na tyto struktury.
+
+void labels_validate ( LABELS * l, gint val )
+Nastaví pro label val jeho hodnotu valid na 1.
+
+gint labels_is_valid ( LABELS * labels, gint val )
+Zjistí, jestli je label val ve struktuře labels silnou hranou, nebo jeslti je součástí hrany, která obsahuje silnou hranu. Pokud ano, vrací 1, jinak vrací 0.
+
+Makra
+getByte( grid, x, y, channel )
+Načte konkrétní byte ze struktury GRID udaný souřadnicemi a požadovaným kanálem. Pokud jsou souřadnice mimo hranice uložené v grid, vrátí byte, jakoby obraz byl zrcadlově prodloužený do všech směrů. Očekávané parametry jsou typů GRID *, gint, gint, gint. Vrací guchar.
+
+suppres( in, out, x, y, x2, y2, x3, y3, val )
+Porovná gradient na souřadnicích x, y uložený ve struktuře GRID, na kterou ukazuje in s gradienty na souřadnicích x2, y2 a x3, y3 v téže struktuře. Pokud je první ze zmíněných gradientů největší nebo je stejný jako jeden z následujících a zároveň větší než zbývající, je propsán na stejné souřadnice do struktury, na kterou ukazuje out. Ve výsledku jsou zachovány jen nejsilnější části hran a případně jen okraje těchto nejsilnějších částí.
+
+Funkce
+static void query ( void )
+Instalace modulu a inicializace zdrojů. Nic zvláštního proti ukázkovému příkladu.
+
+static void run ( const gchar * name, gint nparams, const GimpParam * param, gint * nreturn_vals, GimpParam ** return_vals )
+Vlastní provedení modulu. Zparsuje vstupy od gimpu (image, drawable a run mode) a v případě RGB nebo INDEXED obrazu převede na GRAY. Poté v závislosti na run mode načte parametry a případně zobrazí dialogové okno. Dále je zavolána hlavní funkce canny_detection a nakonec uvolněn drawable. Operace převedení na černobílý obraz je samostatná a tedy po úspěšném dokončení práce celého pluginu jsou v historii dva kroky. První undo se vrátí ze zobrazení hran na černobílý obraz, až druhé undo se vrátí k originálu.
+
+static gboolean canny_dialog ( GimpDrawable * drawable )
+Funkce vytvářející GTK dialogové okno pro interaktivní použití. Má preview a od uživatele načítá dvě hodnoty.
+
+static void canny_detection ( GimpDrawable * drawable, GimpPreview * preview )
+Vlastní funkce tvořící jádro Cannyho algoritmu pro hledání hran. Postupně alokuje a uvolňuje struktury, do kterých se načítají původní data a ukládají mezivýsledky dílčích operací. Vlastní části kódu jsou celkem dobře popsány debugovacími hláškami.
+
+static void gauss_smooth ( GRID * in, GRID * out )
+První část algoritmu, jednoduchá aplikace konvoluce za použití předem definované matice 5×5 gauss_matrix, kterou jemně romzmažeme obraz a částečně se tak zbavíme šumu. Prvním parametrem je ukazatel na GRID s jedním kanálem a výstup je pointer na obdobnou strukturu. První parametr je vstupní, druhý výstupní. Za alokace i uvolnění paměti je zodpovědný volající.
+
+static void sobel_intensity_gradient ( GRID * in, GRID * out )
+Druhá část algoritmu, jednoduchá aplikace konvoluce za použití předem definovaných matic 3×3 sobel_matrix_x a sobel_matrix_y na získání prvních derivací v horizontálním a vertikálním směru. Poté jsou spočítány gradient hrany a aproximaci směru, které jsou uloženy do výstupní struktury. Směr může nabývat jen hodnot 0, 45, 90, 135. Prvním parametrem je ukazatel na GRID s jedním kanálem a výstup je pointer na obdobnou strukturu, kde jsou však kanály dva. První parametr je vstupní, druhý výstupní. Za alokace i uvolnění paměti je zodpovědný volající. Narozdíl od ostatních částí algoritmu není výstup dobře tisknutelný a narušuje jednotnou konvenci volání, chtěl bych proto tuto část předělat možná za použití Parasite. Druhá část algoritmu,
+
+static void non_maximum_suppression ( GRID * in, GRID * out )
+Třetí část algoritmu, gradient každého pixelu je porovnán s gradienty pixelů v kolmém směru. Hrany se tak ztenčí a zůstanou pouze nejsilnější hrany. Pro přesné podmínky vizte makro suppress. Prvním parametrem je ukazatel na GRID s dvěma kanály (gradient a směr) a výstup je pointer na obdobnou strukturu s jedním kanálem. První parametr je vstupní, druhý výstupní. Za alokace i uvolnění paměti je zodpovědný volající.
+
+static void double_threshold ( GRID * in, GRID * out )
+Čtvrtá část algoritmu, pouze se zbývající gradienty porovnájí s parametry ve struktuře thresholds, kam byly načteny při volání. Nejslabší jsou smazány, silnější jsou prohlášeny za slabé hrany a pixely s nejvyššími gradienty za silné hrany. Prvním parametrem je ukazatel na GRID s jedním kanálem a výstup je pointer na obdobnou strukturu. První parametr je vstupní, druhý výstupní. Za alokace i uvolnění paměti je zodpovědný volající.
+
+static void hysteresis ( GRID * in, GRID * out )
+Pátá a nejsložitější část algoritmu, za použití pomocných struktur jsou ve dvou průchodech. Značně inspirováno tímto odkazem. Slabé hrany, které nejsou spojeny s žádnou silnou, jsou smazány. Prvním parametrem je ukazatel na GRID s jedním kanálem a výstup je pointer na obdobnou strukturu. První parametr je vstupní, druhý výstupní. Za alokace i uvolnění paměti je zodpovědný volající.
